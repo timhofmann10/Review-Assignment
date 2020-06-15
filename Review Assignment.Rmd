@@ -1,0 +1,278 @@
+---
+title: "R Review"
+output: html_notebook
+---
+
+For this review, we'll be working with dispatch data from the Lincoln Police Department. You can find the data online here: [http://opendata.lincoln.ne.gov/datasets/lpd-dispatch-records](http://opendata.lincoln.ne.gov/datasets/lpd-dispatch-records).
+
+Use the Download menu to select a csv download.
+
+Then move the data file you downloaded into your project folder.
+
+### Load packages
+
+Load the tidyverse, janitor and lubridate packages.
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(lubridate)
+```
+
+
+
+
+### Load data
+
+Load your data into an object called 'dispatches'.
+
+```{r}
+dispatches <- read.csv("LPD_Dispatch_Records.csv")
+```
+
+#### Fix column names
+
+Use janitor to make all column names comply with R preferred style - all lowercase and underscores between words.
+
+```{r}
+dispatches <- dispatches %>% clean_names()
+```
+
+
+
+### Analysis questions
+
+#### Datatypes
+
+Look at the documentation for the data. Do all the columns appear to be formatted correctly?
+
+Use lubridate to change the RPT_Date column to ymd format.
+
+```{r}
+dates <- dispatches %>% mutate(
+    CleanDate = ymd(rpt_date))
+```
+
+
+Find the 13 rows that failed to parse. Why?
+
+How many cases are in the data? How many unique cases?
+
+```{r}
+nrow(dispatches)
+
+
+```
+```{r}
+UniqueCases <- dispatches %>%
+  group_by(cfs_legend) %>%
+  summarise(
+    total = n()
+  )
+```
+There were 43 different types of cases.
+#### Arranging
+
+What are the oldest and most recent cases in the data?
+
+```{r}
+  NewCases <- dispatches %>% arrange(desc(rpt_date))
+```
+The newest case was June 8, 2020
+
+The oldest case was January 1, 2017
+
+#### Filtering
+
+Create a dataframe called 'missing' with just missing persons cases in it.
+
+```{r}
+missing <- NewCases %>% filter(rpt_date == "0")
+```
+
+Use the str_detect function to find all the cases that mention O Street in the address.
+
+
+```{r}
+OStreet <- dispatches %>% filter(str_detect(block_address, "O ST", negate = FALSE)) 
+```
+
+
+
+#### Counting
+
+Use the count() function to find the number of dispatches to each neighborhood. 
+
+```{r}
+Neighborhood <- dispatches %>%
+  group_by(neighbor) %>%
+  summarise(
+    count = n()
+  ) %>% arrange(desc(count))
+```
+
+Which neighborhood appears the most in the data?
+Downtown
+
+Do you see any limitations of this data when we are counting by neighborhood?
+
+Yes, a lot of the neighborhoods are not specific and cover a wide range of areas
+
+#### Mutating
+
+Create a new column called 'year' that includes just the year from date_fixed.
+
+```{r}
+Year <- dates %>%
+  mutate(
+    year = as.numeric(format(CleanDate,'%Y'))
+  )
+```
+
+
+
+Use the case_when function to create a new categorical variable dividing the rpt_time column into the 24 hours of the day. Be careful to make sure that each time fits into only one value of the new variable.
+
+```{r}
+hours <- dates %>%
+  mutate(
+    hour_of_day = substr(rpt_time, 1, 2)
+  )
+```
+
+
+What hour of the day sees the most police action?
+
+```{r}
+hours %>%
+  group_by(hour_of_day) %>%
+  summarise(
+    total_per_hour = n()
+  ) %>% arrange(desc(total_per_hour))
+```
+
+3-5 pm is not a good time to be out and about.
+#### Grouping and summarizing 
+
+How many drug-related dispatches occurred in each year of the data?
+
+```{r}
+Drugs <- Year %>%
+  group_by(year, cfs_legend) %>%
+  summarise(
+    count = n()
+  ) %>% arrange(desc(count))
+```
+3,300 in 2017. 3,436 in 2018 3,185 in 2019 and 1,252 in 2020
+
+Create a new column called month. Then using group_by and summarize, find the maximum, minimum and average number of dispatches per month.
+
+```{r}
+month <- dates %>%
+  mutate(
+    month = as.numeric(format(CleanDate,'%m'))
+  )
+```
+
+```{r}
+month %>%
+  group_by(month) %>%
+  summarise(
+    total_per_month = n()
+  ) %>% arrange(desc(total_per_month))
+```
+```{r}
+monthly <- month %>%
+  group_by(month) %>%
+  summarise(
+    total_per_month = n()
+  ) %>% arrange(desc(total_per_month))
+```
+```{r}
+monthlydispatch <- monthly %>% 
+  group_by(month) %>% 
+  summarise(
+    avgdispatch = mean(`total_per_month`), 
+    mindispatch = min(`total_per_month`),
+    maxdispatch = max(`total_per_month`))
+```
+
+ 
+
+
+
+#### Percent change
+
+What was the percent change in total number of dispatches from 2018 to 2019?
+
+
+```{r}
+YearTotal <-Year %>%
+  group_by(year) %>%
+  summarise(
+    total_per_year = n()
+  ) %>% arrange(desc(total_per_year))
+```
+
+```{r}
+PercentChange <- YearTotal %>% pivot_wider(names_from = year, values_from = total_per_year)
+```
+
+
+```{r}
+YearDiff <- PercentChange %>% mutate(
+  change = ((`2019` - `2018`)/`2018`*100
+) )
+
+```
+
+There was a .8% change from 2018 to 2019
+#### Line charts
+
+Using ggplot, create a line chart of the number of cases per month and year. Choose an appropriate color for the line, add a title and labels and a choose a theme.
+
+```{r}
+month %>% group_by(CleanDate) %>% summarize(total=n()) %>% ggplot() + geom_line(aes(x=CleanDate, y=total)) +
+  labs(x="Date", y="Dispatches", title= "Crimes in Lincoln Since Jan. 2017", subtitle= "The summer looks like a hot spot for crime.", caption="Source: Lincoln Police Department | Graphic: Tim  Hofmann") + 
+  theme_minimal() + theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 8), 
+    plot.subtitle = element_text(size=10)
+  ) +
+  ggsave("LPDdispatch.png", width = 8, height = 4)
+
+```
+
+
+What do you observe about the yearly pattern of police dispatches? Why do you suppose that is?
+
+#### Column charts
+
+Using ggplot, create a column chart that shows the five most common categories in the cfs_legend column. Apply appropriate design decisions to your chart.
+
+```{r}
+type <- dispatches %>%
+  group_by(cfs_legend) %>%
+  summarise(total = n()) %>%
+  arrange(desc(total)) %>%
+  filter(total >= 22193)
+```
+```{r}
+library(scales)
+```
+
+
+```{r}
+ggplot(type, aes(x=reorder(cfs_legend, -`total`), weight=`total`)) + 
+  geom_bar() + 
+  scale_y_continuous(labels=comma) + 
+  labs(x="", y="", title="5 Most Crimes in Lincoln", subtitle= "If your other category is that high, you should probably specify.", caption="Source: Lincoln Police Department | Graphic: Tim Hofmann") + 
+  coord_flip() + 
+  theme_minimal() + theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 8), 
+    plot.subtitle = element_text(size=10)
+  ) +
+  ggsave("5Dispatches.png", width = 8, height = 4)
+```
+
